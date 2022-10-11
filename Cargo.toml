@@ -1,0 +1,23 @@
+[package]
+name = "bb8-arangodb"
+version = "0.1.0"
+authors = ["Gabor Boros <gabor.brs@gmail.com>"]
+edition = "2021"
+description = "ArangoDB driver for bb8 based on the arangors crate."
+repository = "https://github.com/gabor-boros/bb8-arangodb"
+license = "MIT OR Apache-2.0"
+keywords = ["bb8", "arangodb", "arangors", "pool"]
+categories = ["database"]
+exclude = [".gitignore", ".github/**"]
+
+[badges]
+maintenance = { status = "actively-developed" }
+
+[dependencies]
+async-trait = "0.1"
+arangors = "0.5"
+bb8 = "0.8"
+
+[dev-dependencies]
+tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
+tokio-test = "0.4"

@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    services:
+      arangodb:
+        image: arangodb/arangodb:3.10.0
+        env:
+          ARANGO_ROOT_PASSWORD: openSesame
+        ports:
+          - 8529:8529
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Format
+        run: cargo fmt -- --check
+      - name: Build
+        run: cargo build --verbose
+      - name: Run tests
+        run: cargo test --verbose
+      - name: Docs
+        run: cargo doc --no-deps --document-private-items --all-features
