@@ -6,4 +6,5 @@ All notable changes to this project will be documented in this file.
 
 **Features**
 
-- Add connection manager ([405db8b](https://github.com/gabor-boros/bb8-arangodb/commit/405db8b33f85553afa42a58b14fb0ae7ddb2b251))
+- Add connection manager ([ad148f7](https://github.com/gabor-boros/bb8-arangodb/commit/ad148f7afc645a080960043e1042e50ddc090a38))
+
