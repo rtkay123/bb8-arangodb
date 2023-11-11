@@ -78,7 +78,7 @@ use std::marker::PhantomData;
 pub use arangors;
 pub use bb8;
 
-use arangors::{uclient, ClientError, GenericConnection};
+use arangors::{uclient, ClientError, Database, GenericConnection};
 use async_trait::async_trait;
 
 /// Kind of the authentication method to use when establishing a connection.
@@ -100,42 +100,122 @@ pub struct ArangoConnectionManager<C: uclient::ClientExt> {
     url: String,
     method: AuthenticationMethod,
     phantom: PhantomData<C>,
+    database: Option<String>,
 }
 
 impl<C: uclient::ClientExt> ArangoConnectionManager<C> {
     /// Create a new ArangoConnectionManager..
-    pub fn new(url: String, method: AuthenticationMethod) -> Self {
+    pub fn new(
+        url: String,
+        method: AuthenticationMethod,
+        database: Option<impl AsRef<str>>,
+    ) -> Self {
         Self {
             url,
             method,
             phantom: PhantomData,
+            database: database.map(|f| f.as_ref().into()),
+        }
+    }
+}
+
+///
+#[derive(Debug)]
+pub enum ConnectionType<C: uclient::ClientExt + Send + 'static> {
+    ///
+    Generic(GenericConnection<C>),
+    ///
+    Database(Database<C>),
+}
+
+impl<C> ConnectionType<C>
+where
+    C: uclient::ClientExt + Send + 'static,
+{
+    async fn establish_basic_auth(
+        url: &str,
+        username: &str,
+        password: &str,
+        for_database: Option<&str>,
+    ) -> Result<ConnectionType<C>, ClientError> {
+        let connection = GenericConnection::establish_basic_auth(url, username, password).await?;
+        if let Some(db) = for_database {
+            let db_conn = connection.db(db).await?;
+            Ok(ConnectionType::Database(db_conn))
+        } else {
+            Ok(ConnectionType::Generic(connection))
+        }
+    }
+
+    async fn establish_jwt(
+        url: &str,
+        username: &str,
+        password: &str,
+        for_database: Option<&str>,
+    ) -> Result<ConnectionType<C>, ClientError> {
+        let connection = GenericConnection::establish_jwt(url, username, password).await?;
+        if let Some(db) = for_database {
+            let db_conn = connection.db(db).await?;
+            Ok(ConnectionType::Database(db_conn))
+        } else {
+            Ok(ConnectionType::Generic(connection))
+        }
+    }
+    async fn establish_without_auth(
+        url: &str,
+        for_database: Option<&str>,
+    ) -> Result<ConnectionType<C>, ClientError> {
+        let connection = GenericConnection::establish_without_auth(url).await?;
+        if let Some(db) = for_database {
+            let db_conn = connection.db(db).await?;
+            Ok(ConnectionType::Database(db_conn))
+        } else {
+            Ok(ConnectionType::Generic(connection))
         }
     }
 }
 
 #[async_trait]
 impl<C: uclient::ClientExt + Send + 'static> bb8::ManageConnection for ArangoConnectionManager<C> {
-    type Connection = GenericConnection<C>;
+    type Connection = ConnectionType<C>;
     type Error = ClientError;
 
     async fn connect(&self) -> Result<Self::Connection, Self::Error> {
         match &self.method {
             AuthenticationMethod::BasicAuth(username, password) => {
-                Self::Connection::establish_basic_auth(&self.url, username, password).await
+                Self::Connection::establish_basic_auth(
+                    &self.url,
+                    username,
+                    password,
+                    self.database.as_deref(),
+                )
+                .await
             }
             AuthenticationMethod::JWTAuth(username, password) => {
-                Self::Connection::establish_jwt(&self.url, username, password).await
+                Self::Connection::establish_jwt(
+                    &self.url,
+                    username,
+                    password,
+                    self.database.as_deref(),
+                )
+                .await
             }
             AuthenticationMethod::NoAuth => {
-                Self::Connection::establish_without_auth(&self.url).await
+                Self::Connection::establish_without_auth(&self.url, self.database.as_deref()).await
             }
         }
     }
 
     async fn is_valid(&self, conn: &mut Self::Connection) -> Result<(), Self::Error> {
-        match conn.accessible_databases().await {
-            Ok(_) => Ok(()),
-            Err(e) => Err(e),
+        match conn {
+            ConnectionType::Generic(conn) => match conn.accessible_databases().await {
+                Ok(_) => Ok(()),
+                Err(e) => Err(e),
+            },
+            ConnectionType::Database(conn) => match conn.accessible_collections().await {
+                Ok(_) => Ok(()),
+                Err(e) => Err(e),
+            },
         }
     }
 
